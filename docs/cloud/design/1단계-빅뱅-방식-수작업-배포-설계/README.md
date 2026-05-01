@@ -80,182 +80,31 @@
 
 ### 배포 스크립트
 
-**배포 전 백업 스크립트** (`backup.sh`)
+수작업 절차를 자동화한 4종 스크립트로 구성된다. 환경 변수(`SERVER_HOST`, `SERVER_KEY`, `DB_NAME` 등)는 각 스크립트 상단을 환경에 맞게 수정한다.
 
-```bash
-#!/bin/bash
-set -e
-
-BACKUP_DIR="/app/backup"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-DB_NAME="your_db_name"
-
-echo "===== 배포 전 백업 시작: $TIMESTAMP ====="
-
-mkdir -p $BACKUP_DIR
-
-# 1. 데이터베이스 백업
-echo "[1/3] DB 백업 중..."
-pg_dump -U postgres -d $DB_NAME > "$BACKUP_DIR/db_backup_$TIMESTAMP.sql"
-echo "✓ DB 백업 완료"
-
-# 2. Backend jar 백업
-echo "[2/3] Backend 백업 중..."
-[ -f /app/backend/app.jar ] && cp /app/backend/app.jar "$BACKUP_DIR/app.jar.bak"
-echo "✓ Backend 백업 완료"
-
-# 3. Frontend 빌드 결과 백업
-echo "[3/3] Frontend 백업 중..."
-[ -d /app/frontend/.next ] && cp -r /app/frontend/.next "$BACKUP_DIR/.next.bak"
-echo "✓ Frontend 백업 완료"
-
-echo "===== 백업 완료! ====="
-```
-
-**배포 실행 스크립트** (`deploy.sh`)
-
-```bash
-#!/bin/bash
-set -e
-
-echo "===== 배포 시작: $(date) ====="
-
-# 1. 파일 확인
-echo "[1/4] 배포 파일 확인 중..."
-[ ! -f /app/backend/app.jar ] && echo "✗ Backend jar 없음!" && exit 1
-[ ! -d /app/frontend/.next ] && echo "✗ Frontend .next 없음!" && exit 1
-echo "✓ 배포 파일 확인 완료"
-
-# 2. Backend 재시작 (systemd)
-echo "[2/4] Backend 재시작 중..."
-sudo systemctl restart spring-boot
-echo "✓ Backend 재시작 완료 - 다운타임 시작"
-
-# 3. Frontend 재시작 (pm2)
-echo "[3/4] Frontend 재시작 중..."
-pm2 restart nextjs
-sleep 5
-echo "✓ Frontend 재시작 완료 - 다운타임 종료"
-
-# 4. Health Check
-echo "[4/4] Health Check 중..."
-sleep 10  # 애플리케이션 초기화 대기
-
-BE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
-FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
-
-[ "$BE_STATUS" == "200" ] && echo "✓ Backend OK" || echo "✗ Backend 실패 ($BE_STATUS)"
-[ "$FE_STATUS" == "200" ] && echo "✓ Frontend OK" || echo "✗ Frontend 실패 ($FE_STATUS)"
-
-echo "===== 배포 완료: $(date) ====="
-```
-
-**롤백 스크립트** (`rollback.sh`)
-
-```bash
-#!/bin/bash
-set -e
-
-BACKUP_DIR="/app/backup"
-
-echo "===== 롤백 시작: $(date) ====="
-
-# 1. 서비스 중단
-echo "[1/4] 서비스 중단 중..."
-sudo systemctl stop spring-boot || true
-pm2 stop nextjs || true
-
-# 2. 백업본 복원
-echo "[2/4] 백업본 복원 중..."
-[ -f "$BACKUP_DIR/app.jar.bak" ] && cp "$BACKUP_DIR/app.jar.bak" /app/backend/app.jar
-[ -d "$BACKUP_DIR/.next.bak" ] && rm -rf /app/frontend/.next && cp -r "$BACKUP_DIR/.next.bak" /app/frontend/.next
-echo "✓ 복원 완료"
-
-# 3. 서비스 재시작
-echo "[3/4] 서비스 재시작 중..."
-sudo systemctl restart spring-boot
-pm2 restart nextjs
-sleep 5
-
-# 4. Health Check
-echo "[4/4] Health Check 중..."
-sleep 10  # 애플리케이션 초기화 대기
-
-BE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
-FE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
-
-[ "$BE_STATUS" == "200" ] && echo "✓ Backend OK" || echo "✗ Backend 실패 ($BE_STATUS)"
-[ "$FE_STATUS" == "200" ] && echo "✓ Frontend OK" || echo "✗ Frontend 실패 ($FE_STATUS)"
-
-echo "===== 롤백 완료: $(date) ====="
-```
-
-**로컬 빌드 및 전송 스크립트** (`local-deploy.sh`) - 로컬에서 실행
-
-```bash
-#!/bin/bash
-set -e
-
-# ===== 설정 (환경에 맞게 수정) =====
-SERVER_USER="ubuntu"
-SERVER_HOST="your-server-ip"
-SERVER_KEY="~/.ssh/your-key.pem"
-
-BACKEND_DIR="./backend"
-FRONTEND_DIR="./frontend"
-REMOTE_BACKEND="/app/backend"
-REMOTE_FRONTEND="/app/frontend"
-# ==================================
-
-echo "===== 로컬 빌드 및 배포 시작: $(date) ====="
-
-# 1. Backend 빌드
-echo "[1/4] Backend 빌드 중..."
-cd $BACKEND_DIR
-./gradlew clean build -x test
-cd ..
-echo "✓ Backend 빌드 완료"
-
-# 2. Frontend 빌드
-echo "[2/4] Frontend 빌드 중..."
-cd $FRONTEND_DIR
-npm install && npm run build
-cd ..
-echo "✓ Frontend 빌드 완료"
-
-# 3. Backend jar 전송
-echo "[3/4] Backend jar 전송 중..."
-scp -i $SERVER_KEY $BACKEND_DIR/build/libs/*.jar \
-    $SERVER_USER@$SERVER_HOST:$REMOTE_BACKEND/app.jar
-echo "✓ Backend 전송 완료"
-
-# 4. Frontend 빌드 결과 전송
-echo "[4/4] Frontend 빌드 결과 전송 중..."
-scp -i $SERVER_KEY -r $FRONTEND_DIR/.next \
-    $SERVER_USER@$SERVER_HOST:$REMOTE_FRONTEND/
-echo "✓ Frontend 전송 완료"
-
-echo "===== 전송 완료! ====="
-echo "서버에서 deploy.sh를 실행하세요."
-```
+| 스크립트 | 역할 | 절차 단계 |
+|---|---|---|
+| [`backup.sh`](./scripts/backup.sh) | DB·Backend jar·Frontend 빌드 결과 백업 | 2단계 |
+| [`local-deploy.sh`](./scripts/local-deploy.sh) | 로컬 빌드 + SCP 전송 | 3·4·7·8단계 |
+| [`deploy.sh`](./scripts/deploy.sh) | 서비스 재시작 + Health Check | 10·11·12단계 |
+| [`rollback.sh`](./scripts/rollback.sh) | 백업본 복원 + 재시작 | 장애 대응 시 |
 
 **사전 설정 필요**
 
 > 배포 스크립트 실행 전, 서버에 systemd 서비스와 pm2 설정이 완료되어 있어야 합니다.
 > 상세 설정 방법은 [배포 상세 절차 - E. 프로세스 관리 설정](./docs/배포-상세-절차/README.md#e-프로세스-관리-설정)을 참고하세요.
 
-**스크립트 사용법**
+**사용 흐름**
 
 ```bash
-# 실행 권한 부여
-chmod +x backup.sh deploy.sh rollback.sh local-deploy.sh
+# 실행 권한 부여 (최초 1회)
+chmod +x scripts/*.sh
 
-# 전체 배포 순서
 # 1. (서버) 백업 실행
 ssh user@server './backup.sh'
 
 # 2. (로컬) 빌드 및 전송
-./local-deploy.sh
+./scripts/local-deploy.sh
 
 # 3. (서버) 배포 실행
 ssh user@server './deploy.sh'
