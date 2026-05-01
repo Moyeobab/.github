@@ -7,7 +7,7 @@
 
 ## 단계별 확장 로드맵
 
-### [1단계: Big Bang 방식 수작업 배포 설계](./design/stage-1-bigbang.md)
+### [1단계: Big Bang 방식 수작업 배포 설계](./design/1단계-빅뱅-방식-수작업-배포-설계/README.md)
 
 ### [2단계: CI(지속적 통합) 파이프라인 구축 설계](./design/stage-2-ci.md)
 

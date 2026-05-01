@@ -24,7 +24,7 @@
     - 압도적인 데이터 분석 (BigQuery)
     - 네트워크 성능 및 비용 (Global Fiber)
 
-![images](./images/step1_1.png)
+![images](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_1.png)
 
 **그럼에도 불구하고 AWS 인 이유**
 
@@ -229,21 +229,21 @@ Spring Cloud Gateway
 - 후보 : t3.micro / t3.small / t3.medium / t3.large
 - 목적 : “최소 스펙”을 찾기 위해 한 단계씩 올리며 한계점을 확인
 - t3.micro
-  ![image.png](./images/step1_idle_t3_micro.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_idle_t3_micro.png)
 - t3.small
-  ![image.png](./images/step1_idle_t3_small.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_idle_t3_small.png)
 - t3.medium
-  ![image.png](./images/step1_idle_t3_medium.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_idle_t3_medium.png)
 - t3.large
-  ![image.png](./images/step1_idle_t3_large.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_idle_t3_large.png)
 
 ## 부하 테스트
 
 - t3.micro
-  ![image.png](./images/step1_peak_t3_micro.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_peak_t3_micro.png)
 - t3.small
-  ![image.png](./images/step1_peak_t3_small.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_peak_t3_small.png)
 - t3.medium
-  ![image.png](./images/step1_peak_t3_medium.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_peak_t3_medium.png)
 - t3.large
-  ![image.png](./images/step1_peak_t3_large.png)
+  ![image.png](./design/1단계-빅뱅-방식-수작업-배포-설계/images/step1_peak_t3_large.png)
