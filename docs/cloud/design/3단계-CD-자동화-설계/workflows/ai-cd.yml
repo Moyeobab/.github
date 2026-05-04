@@ -1,0 +1,207 @@
+# AI CD Pipeline
+# CD Flow v5: 중단 배포 + Smoke Test + 자동 롤백
+# 팀 규칙: main 머지는 새벽 시간대에만 (00:00 ~ 06:00)
+# RunPod GPU 인스턴스 대상
+
+name: AI CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+env:
+  DEPLOY_PATH: /home/runpod/app
+  BACKUP_PATH: /home/runpod/app-backup
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ===== Stage 1: 아티팩트 준비 =====
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # ===== SSH 설정 =====
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.RUNPOD_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.RUNPOD_SSH_PORT }} -H ${{ secrets.RUNPOD_HOST }} >> ~/.ssh/known_hosts
+
+      # ===== Stage 2: 서버 백업 =====
+      - name: Backup Current App
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.RUNPOD_SSH_PORT }} \
+            ${{ secrets.RUNPOD_USER }}@${{ secrets.RUNPOD_HOST }} << 'EOF'
+
+            if [ -d "${{ env.DEPLOY_PATH }}" ] && [ "$(ls -A ${{ env.DEPLOY_PATH }})" ]; then
+              rm -rf ${{ env.BACKUP_PATH }}
+              cp -r ${{ env.DEPLOY_PATH }} ${{ env.BACKUP_PATH }}
+              echo "백업 완료"
+            else
+              mkdir -p ${{ env.DEPLOY_PATH }}
+              echo "백업할 파일 없음 (최초 배포)"
+            fi
+          EOF
+
+      # ===== Stage 3: 파일 전송 및 배포 =====
+      - name: Upload Source Code
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.RUNPOD_SSH_PORT }}" \
+            --exclude '.git' \
+            --exclude '__pycache__' \
+            --exclude '.venv' \
+            --exclude '*.pyc' \
+            ./ ${{ secrets.RUNPOD_USER }}@${{ secrets.RUNPOD_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Deploy Application
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.RUNPOD_SSH_PORT }} \
+            ${{ secrets.RUNPOD_USER }}@${{ secrets.RUNPOD_HOST }} << 'EOF'
+
+            cd ${{ env.DEPLOY_PATH }}
+            mkdir -p logs
+
+            # 기존 프로세스 종료 (SIGTERM → 30초 대기 → SIGKILL)
+            PID=$(pgrep -f "uvicorn.*main:app" || true)
+            if [ -n "$PID" ]; then
+              echo "프로세스 종료 중... (PID: $PID)"
+              kill -15 $PID
+
+              for i in {1..30}; do
+                if ! ps -p $PID > /dev/null 2>&1; then
+                  echo "정상 종료"
+                  break
+                fi
+                sleep 1
+              done
+
+              if ps -p $PID > /dev/null 2>&1; then
+                kill -9 $PID
+                sleep 2
+              fi
+            fi
+
+            # 가상환경 생성 및 의존성 설치
+            python -m venv .venv
+            source .venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            # FastAPI 실행
+            nohup .venv/bin/uvicorn main:app \
+              --host 0.0.0.0 \
+              --port 8000 \
+              > logs/app.log 2>&1 &
+
+            sleep 10
+            echo "배포 완료"
+          EOF
+
+      # ===== Stage 4: Smoke Test =====
+      - name: Smoke Test
+        id: smoke_test
+        run: |
+          MAX_RETRY=10
+          RETRY_INTERVAL=5
+
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "Smoke Test $i/$MAX_RETRY..."
+
+            # Health Check
+            HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ secrets.RUNPOD_HOST }}:8000/health || echo "000")
+
+            if [ "$HEALTH" = "200" ]; then
+              # API 테스트
+              API=$(curl -s -o /dev/null -w "%{http_code}" \
+                --max-time 10 \
+                http://${{ secrets.RUNPOD_HOST }}:8000/api/ping || echo "000")
+
+              if [ "$API" = "200" ]; then
+                echo "Smoke Test 통과"
+                exit 0
+              fi
+            fi
+
+            sleep $RETRY_INTERVAL
+          done
+
+          echo "Smoke Test 실패"
+          exit 1
+
+      # ===== 자동 롤백 (Smoke Test 실패 시) =====
+      - name: Rollback on Failure
+        if: failure() && steps.smoke_test.outcome == 'failure'
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ secrets.RUNPOD_SSH_PORT }} \
+            ${{ secrets.RUNPOD_USER }}@${{ secrets.RUNPOD_HOST }} << 'EOF'
+
+            # 프로세스 강제 종료
+            PID=$(pgrep -f "uvicorn.*main:app" || true)
+            if [ -n "$PID" ]; then
+              kill -9 $PID
+              sleep 2
+            fi
+
+            # 백업 복원
+            if [ -d "${{ env.BACKUP_PATH }}" ] && [ "$(ls -A ${{ env.BACKUP_PATH }})" ]; then
+              rm -rf ${{ env.DEPLOY_PATH }}
+              cp -r ${{ env.BACKUP_PATH }} ${{ env.DEPLOY_PATH }}
+
+              cd ${{ env.DEPLOY_PATH }}
+              source .venv/bin/activate
+
+              nohup .venv/bin/uvicorn main:app \
+                --host 0.0.0.0 \
+                --port 8000 \
+                > logs/app.log 2>&1 &
+
+              sleep 10
+              echo "롤백 완료"
+            else
+              echo "백업 파일 없음"
+              exit 1
+            fi
+          EOF
+
+      # ===== Stage 5: 알림 발송 =====
+      - name: Notify Success
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "AI 배포 완료",
+                "color": 5763719,
+                "fields": [
+                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "커밋", "value": "`${{ github.sha }}`", "inline": true}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "AI 배포 실패",
+                "description": "롤백이 실행되었습니다.",
+                "color": 15548997,
+                "fields": [
+                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "커밋", "value": "`${{ github.sha }}`", "inline": true},
+                  {"name": "로그", "value": "[확인하기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}

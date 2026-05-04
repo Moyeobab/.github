@@ -28,7 +28,7 @@
 
 - [1단계: Big Bang 방식 수작업 배포 설계](./cloud/design/1단계-빅뱅-방식-수작업-배포-설계/README.md)
 - [2단계: CI 파이프라인 구축 설계](./cloud/design/2단계-CI-자동화-설계/README.md)
-- [3단계: CD 파이프라인 구축 설계](./cloud/design/stage-3-cd.md)
+- [3단계: CD 파이프라인 구축 설계](./cloud/design/3단계-CD-자동화-설계/README.md)
 - [4단계: Docker 컨테이너화 배포](./cloud/design/stage-4-container.md)
 
 ### 마일스톤

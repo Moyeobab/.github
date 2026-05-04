@@ -11,7 +11,7 @@
 
 ### [2단계: CI(지속적 통합) 파이프라인 구축 설계](./design/2단계-CI-자동화-설계/README.md)
 
-### [3단계: CD(지속적 배포) 파이프라인 구축 설계](./design/stage-3-cd.md)
+### [3단계: CD(지속적 배포) 파이프라인 구축 설계](./design/3단계-CD-자동화-설계/README.md)
 
 ### [4단계: Docker 컨테이너화 배포](./design/stage-4-container.md)
 

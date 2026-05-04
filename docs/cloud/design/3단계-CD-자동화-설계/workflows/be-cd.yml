@@ -1,0 +1,195 @@
+# BE CD Pipeline
+# CD Flow v5: 중단 배포 + Smoke Test + 자동 롤백
+# 팀 규칙: main 머지는 새벽 시간대에만 (00:00 ~ 06:00)
+
+name: BE CD Pipeline
+
+on:
+  push:
+    branches: [main]
+
+env:
+  JAR_NAME: app.jar
+  DEPLOY_PATH: /home/ubuntu/app
+  BACKUP_PATH: /home/ubuntu/app/backup
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ===== Stage 1: 아티팩트 준비 =====
+      - name: Download JAR from CI
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          branch: main
+          name: artifact-jar-latest
+          path: ./artifact
+
+      # ===== SSH 설정 =====
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      # ===== Stage 2: 서버 백업 =====
+      - name: Backup Current JAR
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            mkdir -p ${{ env.BACKUP_PATH }}
+
+            if [ -f "${{ env.DEPLOY_PATH }}/${{ env.JAR_NAME }}" ]; then
+              cp ${{ env.DEPLOY_PATH }}/${{ env.JAR_NAME }} ${{ env.BACKUP_PATH }}/${{ env.JAR_NAME }}.backup
+              echo "백업 완료"
+            else
+              echo "백업할 JAR 없음 (최초 배포)"
+            fi
+          EOF
+
+      # ===== Stage 3: 파일 전송 및 배포 =====
+      - name: Upload New JAR
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+          scp -i ~/.ssh/deploy_key \
+            ./artifact/*.jar \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.DEPLOY_PATH }}/${{ env.JAR_NAME }}
+
+      - name: Deploy Application
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            mkdir -p logs
+
+            # 기존 프로세스 종료 (SIGTERM → 30초 대기 → SIGKILL)
+            PID=$(pgrep -f "${{ env.JAR_NAME }}" || true)
+            if [ -n "$PID" ]; then
+              echo "프로세스 종료 중... (PID: $PID)"
+              kill -15 $PID
+
+              for i in {1..30}; do
+                if ! ps -p $PID > /dev/null 2>&1; then
+                  echo "정상 종료"
+                  break
+                fi
+                sleep 1
+              done
+
+              if ps -p $PID > /dev/null 2>&1; then
+                kill -9 $PID
+                sleep 2
+              fi
+            fi
+
+            # 새 JAR 실행
+            nohup java -jar \
+              -Dspring.profiles.active=prod \
+              ${{ env.JAR_NAME }} \
+              > logs/app.log 2>&1 &
+
+            sleep 10
+            echo "배포 완료"
+          EOF
+
+      # ===== Stage 4: Smoke Test =====
+      - name: Smoke Test
+        id: smoke_test
+        run: |
+          MAX_RETRY=10
+          RETRY_INTERVAL=5
+
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "Smoke Test $i/$MAX_RETRY..."
+
+            # Health Check
+            HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              http://${{ secrets.EC2_HOST }}:8080/actuator/health || echo "000")
+
+            if [ "$HEALTH" = "200" ]; then
+              # API 테스트
+              API=$(curl -s -o /dev/null -w "%{http_code}" \
+                --max-time 10 \
+                http://${{ secrets.EC2_HOST }}:8080/api/ping || echo "000")
+
+              if [ "$API" = "200" ]; then
+                echo "Smoke Test 통과"
+                exit 0
+              fi
+            fi
+
+            sleep $RETRY_INTERVAL
+          done
+
+          echo "Smoke Test 실패"
+          exit 1
+
+      # ===== 자동 롤백 (Smoke Test 실패 시) =====
+      - name: Rollback on Failure
+        if: failure() && steps.smoke_test.outcome == 'failure'
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+
+            # 프로세스 강제 종료
+            PID=$(pgrep -f "${{ env.JAR_NAME }}" || true)
+            if [ -n "$PID" ]; then
+              kill -9 $PID
+              sleep 2
+            fi
+
+            # 백업 복원
+            if [ -f "${{ env.BACKUP_PATH }}/${{ env.JAR_NAME }}.backup" ]; then
+              cp ${{ env.BACKUP_PATH }}/${{ env.JAR_NAME }}.backup ${{ env.DEPLOY_PATH }}/${{ env.JAR_NAME }}
+
+              nohup java -jar \
+                -Dspring.profiles.active=prod \
+                ${{ env.JAR_NAME }} \
+                > logs/app.log 2>&1 &
+
+              sleep 10
+              echo "롤백 완료"
+            else
+              echo "백업 파일 없음"
+              exit 1
+            fi
+          EOF
+
+      # ===== Stage 5: 알림 발송 =====
+      - name: Notify Success
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "BE 배포 완료",
+                "color": 5763719,
+                "fields": [
+                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "커밋", "value": "`${{ github.sha }}`", "inline": true}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "BE 배포 실패",
+                "description": "롤백이 실행되었습니다.",
+                "color": 15548997,
+                "fields": [
+                  {"name": "브랜치", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "커밋", "value": "`${{ github.sha }}`", "inline": true},
+                  {"name": "로그", "value": "[확인하기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": false}
+                ],
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
