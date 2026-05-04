@@ -9,7 +9,7 @@
 
 ### [1단계: Big Bang 방식 수작업 배포 설계](./design/1단계-빅뱅-방식-수작업-배포-설계/README.md)
 
-### [2단계: CI(지속적 통합) 파이프라인 구축 설계](./design/stage-2-ci.md)
+### [2단계: CI(지속적 통합) 파이프라인 구축 설계](./design/2단계-CI-자동화-설계/README.md)
 
 ### [3단계: CD(지속적 배포) 파이프라인 구축 설계](./design/stage-3-cd.md)
 

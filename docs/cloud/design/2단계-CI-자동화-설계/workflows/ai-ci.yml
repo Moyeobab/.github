@@ -1,0 +1,79 @@
+name: AI PR CI Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy . --ignore-missing-imports
+
+      - name: Build artifact (wheel) - sha
+        if: success()
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: Run tests (pytest + coverage)
+        run: |
+          pytest -q --maxfail=1 --disable-warnings \
+            --junitxml=pytest.xml \
+            --cov=ai-app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov
+
+      - name: Upload reports (tests/coverage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-ci-reports-${{ github.sha }}
+          path: |
+            pytest.xml
+            htmlcov/**
+            coverage.xml
+            reports/**
+            test-results/**
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload build artifact (wheel/sdist) - sha
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-${{ github.sha }}
+          path: dist/**
+          retention-days: 30
+
+      - name: Upload build artifact (wheel/sdist) - latest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-latest
+          path: dist/**
+          retention-days: 30

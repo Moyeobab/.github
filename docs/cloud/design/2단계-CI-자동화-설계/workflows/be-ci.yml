@@ -1,0 +1,68 @@
+name: BE PR CI Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (with Gradle cache)
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Lint & static analysis
+        run: ./gradlew checkstyleMain checkstyleTest --no-daemon
+
+      - name: Package
+        run: ./gradlew bootJar --no-daemon
+
+      - name: Static analysis (SpotBugs)
+        run: ./gradlew spotbugsMain spotbugsTest --no-daemon
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      - name: Verify coverage
+        run: ./gradlew jacocoTestCoverageVerification --no-daemon
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ github.sha }}
+          path: build/reports/tests/test/
+          retention-days: 30
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.sha }}
+          path: build/reports/jacoco/
+          retention-days: 30
+
+      - name: Upload build artifact (jar)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar-${{ github.sha }}
+          path: build/libs/*.jar
+          retention-days: 30
+
+      - name: Upload build artifact (jar) - latest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-jar-latest
+          path: build/libs/*.jar
+          retention-days: 30

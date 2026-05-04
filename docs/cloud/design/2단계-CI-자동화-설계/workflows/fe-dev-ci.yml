@@ -1,0 +1,66 @@
+name: FE DEV PR CI Pipeline
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Type check
+        run: npm run typecheck --if-present
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test --if-present
+
+      - name: Upload lint/test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ github.sha }}
+          path: |
+            coverage/**
+            test-results/**
+            reports/**
+            junit.xml
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload build artifact - sha
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build artifact - latest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-latest
+          path: dist/**
+          if-no-files-found: error
+          retention-days: 30
