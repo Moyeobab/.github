@@ -1,0 +1,17 @@
+services:
+  # ===========================================
+  # 애플리케이션 컨테이너 (ECR에서 Pull)
+  # ===========================================
+  spring-backend:
+    image: ${ECR_REGISTRY}/tastecompass/spring-backend:${IMAGE_TAG:-prod}
+    container_name: tastecompass-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:5432/tastecompass
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - SPRING_REDIS_HOST=${REDIS_HOST}
+      - SPRING_REDIS_PORT=6379
+      - AI_SERVICE_URL=

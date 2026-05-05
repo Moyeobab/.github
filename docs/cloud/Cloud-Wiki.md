@@ -13,7 +13,7 @@
 
 ### [3단계: CD(지속적 배포) 파이프라인 구축 설계](./design/3단계-CD-자동화-설계/README.md)
 
-### [4단계: Docker 컨테이너화 배포](./design/stage-4-container.md)
+### [4단계: Docker 컨테이너화 배포](./design/4단계-Docker-컨테이너화-설계/README.md)
 
 ## 마일스톤
 

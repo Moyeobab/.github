@@ -1,0 +1,40 @@
+# ===========================================
+# Stage 1: Build
+# ===========================================
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /app
+
+# 1. 캐시 최적화: 의존성 파일 먼저 복사
+COPY gradlew build.gradle settings.gradle ./
+COPY gradle ./gradle
+
+# 2. 의존성 다운로드 (캐시 활용)
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
+
+# 3. 소스 코드 복사 (자주 변경되는 부분)
+COPY src ./src
+
+# 4. 빌드
+RUN ./gradlew bootJar --no-daemon
+
+# ===========================================
+# Stage 2: Runtime
+# ===========================================
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# 5. 비루트 사용자 생성
+RUN addgroup -g 1001 appgroup && \
+    adduser -u 1001 -G appgroup -D appuser
+
+# 6. 빌드 결과물만 복사
+COPY --from=builder /app/build/libs/*.jar app.jar
+
+# 7. 권한 설정 및 사용자 전환
+RUN chown appuser:appgroup app.jar
+USER appuser
+
+EXPOSE 8080
+
+# 8. ENTRYPOINT + CMD 분리
+ENTRYPOINT ["java", "-jar", "app.jar"]

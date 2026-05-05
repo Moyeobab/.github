@@ -1,0 +1,38 @@
+# ===========================================
+# Stage 1: Build (의존성 설치)
+# ===========================================
+FROM python:3.11-slim AS builder
+WORKDIR /app
+
+# 1. 캐시 최적화: requirements.txt 먼저 복사
+COPY requirements.txt .
+
+# 2. 의존성 설치 (virtualenv 사용)
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# ===========================================
+# Stage 2: Runtime
+# ===========================================
+FROM python:3.11-slim
+WORKDIR /app
+
+# 3. 비루트 사용자 생성
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -m appuser
+
+# 4. virtualenv 복사 (빌드 도구 제외)
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# 5. 소스 코드 복사
+COPY --chown=appuser:appgroup . .
+
+USER appuser
+
+EXPOSE 8000
+
+# 6. ENTRYPOINT + CMD 분리
+ENTRYPOINT ["uvicorn", "main:app"]
+CMD ["--host", "0.0.0.0", "--port", "8000"]
