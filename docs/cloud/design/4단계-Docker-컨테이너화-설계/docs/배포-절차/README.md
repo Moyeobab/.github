@@ -4,10 +4,10 @@
 
 | **단계** | **기존 수작업 배포** | **소요 시간** | **Docker 배포** | **소요 시간** |
 | --- | --- | --- | --- | --- |
-| **1. 코드 Pull** | git pull origin main | 10~30초 | docker pull (ECR) | 5~10초 |
-| **2. 빌드** | ./gradlew bootJar | 3~5분 | 생략 (CI에서 완료) | 0초 |
-| **3. 애플리케이션 중지** | kill 프로세스 또는 systemctl stop | 5~10초 | docker stop (graceful) | 5~10초 |
-| **4. 애플리케이션 시작** | nohup java -jar app.jar & | 30~60초 | docker run / compose up | 10~20초 |
+| **1. 코드 Pull** | git pull origin main | 10-30초 | docker pull (ECR) | 5-10초 |
+| **2. 빌드** | ./gradlew bootJar | 3-5분 | 생략 (CI에서 완료) | 0초 |
+| **3. 애플리케이션 중지** | kill 프로세스 또는 systemctl stop | 5-10초 | docker stop (graceful) | 5-10초 |
+| **4. 애플리케이션 시작** | nohup java -jar app.jar & | 30-60초 | docker run / compose up | 10-20초 |
 
 ---
 
