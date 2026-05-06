@@ -62,4 +62,4 @@ sudo journalctl -u recommend -f
 
 ## 참고 이미지
 
-![Health Check UI](./assets/images/app-execution-check-1.png)
+![Health Check UI](../../images/app-execution-check-1.png)

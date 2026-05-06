@@ -21,15 +21,15 @@
 
 **목표:** VM(가상머신) 환경에서 애플리케이션을 수동으로 배포하고 실행하는 초기 배포 구조를 구현합니다. 서버 프로비저닝부터 애플리케이션 실행까지 전체 배포 흐름을 경험하고 문서화합니다.
 
-- [VPC 및 서브넷 설정](./milestone/m1/vpc-subnet-setup.md)
+- [VPC 및 서브넷 설정](./milestone/m1/docs/VPC-서브넷-설정/README.md)
 
-- [EC2 인스턴스 생성 및 보안 그룹 설정](./milestone/m1/ec2-sg-setup.md)
+- [EC2 인스턴스 생성 및 보안 그룹 설정](./milestone/m1/docs/EC2-보안그룹-설정/README.md)
 
-- [애플리케이션 의존성 설치 및 환경 구성](./milestone/m1/app-dependency-env.md)
+- [애플리케이션 의존성 설치 및 환경 구성](./milestone/m1/docs/애플리케이션-의존성-환경/README.md)
 
-- [애플리케이션 정상 실행 및 접속 확인](./milestone/m1/app-execution-check.md)
+- [애플리케이션 정상 실행 및 접속 확인](./milestone/m1/docs/애플리케이션-실행-확인/README.md)
 
-- [DB 접근 보호 방법 조사](./DB-접근-보호-방식.md)
+- [DB 접근 보호 방법 조사](./milestone/m1/docs/DB-접근-보호-방식/README.md)
 
 
 ### [M2] 빅뱅 배포용 CI/CD 파이프라인 구현
