@@ -261,6 +261,7 @@ ssh user@server './rollback.sh'
 
 **참고**
 - [클라우드 선택 (참고)](./docs/클라우드-선택-참고/README.md)
+- [대조군 비교 (참고)](./docs/대조군-비교-참고/README.md)
 - [개선 계획](./docs/개선-계획/README.md)
 - [RunPod 배포 방식](./docs/RunPod-배포-방식/README.md)
 - [벡터DB 비교](./docs/벡터DB-비교/README.md)

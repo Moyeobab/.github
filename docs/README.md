@@ -22,7 +22,6 @@
 ## ☁️ Cloud
 
 - [Cloud Wiki (인덱스)](./cloud/Cloud-Wiki.md)
-- [AWS 와 대조군 비교분석](./cloud/reference-decision.md)
 
 ### 단계별 설계
 
